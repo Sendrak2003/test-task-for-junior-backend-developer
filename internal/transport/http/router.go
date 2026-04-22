@@ -1,6 +1,7 @@
 package transporthttp
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -24,8 +25,22 @@ func corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+func recoveryMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				slog.Error("panic recovered", "error", rec, "path", r.URL.Path)
+				http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
+			}
+		}()
+
+		next.ServeHTTP(w, r)
+	})
+}
+
 func NewRouter(taskHandler *httphandlers.TaskHandler, docsHandler *swaggerdocs.Handler) *mux.Router {
 	router := mux.NewRouter().StrictSlash(true)
+	router.Use(recoveryMiddleware)
 	router.Use(corsMiddleware)
 
 	router.HandleFunc("/swagger/openapi.json", docsHandler.ServeSpec).Methods(http.MethodGet)
