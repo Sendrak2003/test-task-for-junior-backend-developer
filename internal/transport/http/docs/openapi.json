@@ -154,22 +154,62 @@
       }
     },
     "schemas": {
+      "RecurrenceSettings": {
+        "type": "object",
+        "required": ["type"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["daily", "monthly", "specific_dates", "even_odd_days"],
+            "example": "daily"
+          },
+          "day_interval": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 365,
+            "example": 2,
+            "description": "Required for type=daily. Repeat every N days."
+          },
+          "month_days": {
+            "type": "array",
+            "items": { "type": "integer", "minimum": 1, "maximum": 30 },
+            "example": [1, 15],
+            "description": "Required for type=monthly. Days of month to repeat on."
+          },
+          "specific_dates": {
+            "type": "array",
+            "items": { "type": "string", "format": "date" },
+            "example": ["2026-05-01", "2026-08-01"],
+            "description": "Required for type=specific_dates. Exact dates to repeat on."
+          },
+          "even_odd_type": {
+            "type": "string",
+            "enum": ["even", "odd"],
+            "example": "even",
+            "description": "Required for type=even_odd_days."
+          }
+        }
+      },
       "CreateTaskRequest": {
         "type": "object",
         "required": ["title"],
         "properties": {
           "title": {
             "type": "string",
-            "example": "Prepare release"
+            "example": "Обход пациентов"
           },
           "description": {
             "type": "string",
-            "example": "Collect release notes and check migrations"
+            "example": "Провести утренний обход пациентов в палатах 1-5"
           },
           "status": {
             "type": "string",
             "enum": ["new", "in_progress", "done"],
             "example": "new"
+          },
+          "recurrence": {
+            "nullable": true,
+            "allOf": [{ "$ref": "#/components/schemas/RecurrenceSettings" }]
           }
         }
       },
@@ -179,16 +219,21 @@
         "properties": {
           "title": {
             "type": "string",
-            "example": "Prepare release"
+            "example": "Обход пациентов"
           },
           "description": {
             "type": "string",
-            "example": "Collect release notes and check migrations"
+            "example": "Провести утренний обход пациентов в палатах 1-5"
           },
           "status": {
             "type": "string",
             "enum": ["new", "in_progress", "done"],
             "example": "in_progress"
+          },
+          "recurrence": {
+            "nullable": true,
+            "allOf": [{ "$ref": "#/components/schemas/RecurrenceSettings" }],
+            "description": "Omit to keep existing. Set to null to remove recurrence."
           }
         }
       },
@@ -196,25 +241,29 @@
         "type": "object",
         "properties": {
           "id": { "type": "integer", "format": "int64", "example": 1 },
-          "title": { "type": "string", "example": "Prepare release" },
+          "title": { "type": "string", "example": "Обход пациентов" },
           "description": {
             "type": "string",
-            "example": "Collect release notes and check migrations"
+            "example": "Провести утренний обход пациентов в палатах 1-5"
           },
           "status": {
             "type": "string",
             "enum": ["new", "in_progress", "done"],
             "example": "new"
           },
+          "recurrence": {
+            "nullable": true,
+            "allOf": [{ "$ref": "#/components/schemas/RecurrenceSettings" }]
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
-            "example": "2026-03-24T00:00:00Z"
+            "example": "2026-04-22T00:00:00Z"
           },
           "updated_at": {
             "type": "string",
             "format": "date-time",
-            "example": "2026-03-24T00:00:00Z"
+            "example": "2026-04-22T00:00:00Z"
           }
         }
       },

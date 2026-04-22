@@ -1,5 +1,8 @@
 .ruby-lsp
 
+# Kiro IDE files
+.kiro/
+
 # Environment variables
 .env
 
@@ -9,6 +12,8 @@
 *.exe
 *.test
 *.out
+
+internal/transport/http/docs/generated/
 
 # Go module cache
 vendor/
