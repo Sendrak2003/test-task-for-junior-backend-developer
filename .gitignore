@@ -1,1 +1,24 @@
 .ruby-lsp
+
+# Environment variables
+.env
+
+# Go build artifacts
+/bin/
+/out/
+*.exe
+*.test
+*.out
+
+# Go module cache
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
