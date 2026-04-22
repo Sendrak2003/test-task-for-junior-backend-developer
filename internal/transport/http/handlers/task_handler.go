@@ -20,6 +20,17 @@ func NewTaskHandler(usecase taskusecase.Usecase) *TaskHandler {
 	return &TaskHandler{usecase: usecase}
 }
 
+// Create godoc
+// @Summary      Create task
+// @Description  Create a new task with optional recurrence settings
+// @Tags         Tasks
+// @Accept       json
+// @Produce      json
+// @Param        task  body      CreateTaskRequest  true  "Task to create"
+// @Success      201   {object}  taskDTO
+// @Failure      400   {object}  ErrorResponse
+// @Failure      500   {object}  ErrorResponse
+// @Router       /api/v1/tasks [post]
 func (h *TaskHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req taskMutationDTO
 	if err := decodeJSON(r, &req); err != nil {
@@ -27,10 +38,16 @@ func (h *TaskHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var recurrence *taskdomain.RecurrenceSettings
+	if req.Recurrence != nil {
+		recurrence = recurrenceDTOToDomain(*req.Recurrence)
+	}
+
 	created, err := h.usecase.Create(r.Context(), taskusecase.CreateInput{
 		Title:       req.Title,
 		Description: req.Description,
 		Status:      req.Status,
+		Recurrence:  recurrence,
 	})
 	if err != nil {
 		writeUsecaseError(w, err)
@@ -40,6 +57,17 @@ func (h *TaskHandler) Create(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, newTaskDTO(created))
 }
 
+// GetByID godoc
+// @Summary      Get task by ID
+// @Description  Get a single task by its ID
+// @Tags         Tasks
+// @Produce      json
+// @Param        id   path      int  true  "Task ID"
+// @Success      200  {object}  taskDTO
+// @Failure      400  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /api/v1/tasks/{id} [get]
 func (h *TaskHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	id, err := getIDFromRequest(r)
 	if err != nil {
@@ -56,6 +84,19 @@ func (h *TaskHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, newTaskDTO(task))
 }
 
+// Update godoc
+// @Summary      Update task
+// @Description  Update an existing task. Omit recurrence to keep existing, set to null to remove.
+// @Tags         Tasks
+// @Accept       json
+// @Produce      json
+// @Param        id    path      int                true  "Task ID"
+// @Param        task  body      UpdateTaskRequest  true  "Task fields to update"
+// @Success      200   {object}  taskDTO
+// @Failure      400   {object}  ErrorResponse
+// @Failure      404   {object}  ErrorResponse
+// @Failure      500   {object}  ErrorResponse
+// @Router       /api/v1/tasks/{id} [put]
 func (h *TaskHandler) Update(w http.ResponseWriter, r *http.Request) {
 	id, err := getIDFromRequest(r)
 	if err != nil {
@@ -69,10 +110,17 @@ func (h *TaskHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var recurrence **taskdomain.RecurrenceSettings
+	if req.Recurrence != nil {
+		r := recurrenceDTOToDomain(*req.Recurrence)
+		recurrence = &r
+	}
+
 	updated, err := h.usecase.Update(r.Context(), id, taskusecase.UpdateInput{
 		Title:       req.Title,
 		Description: req.Description,
 		Status:      req.Status,
+		Recurrence:  recurrence,
 	})
 	if err != nil {
 		writeUsecaseError(w, err)
@@ -82,6 +130,16 @@ func (h *TaskHandler) Update(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, newTaskDTO(updated))
 }
 
+// Delete godoc
+// @Summary      Delete task
+// @Description  Delete a task by ID
+// @Tags         Tasks
+// @Param        id   path  int  true  "Task ID"
+// @Success      204
+// @Failure      400  {object}  ErrorResponse
+// @Failure      404  {object}  ErrorResponse
+// @Failure      500  {object}  ErrorResponse
+// @Router       /api/v1/tasks/{id} [delete]
 func (h *TaskHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id, err := getIDFromRequest(r)
 	if err != nil {
@@ -97,6 +155,14 @@ func (h *TaskHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// List godoc
+// @Summary      List tasks
+// @Description  Get all tasks ordered by ID descending
+// @Tags         Tasks
+// @Produce      json
+// @Success      200  {array}   taskDTO
+// @Failure      500  {object}  ErrorResponse
+// @Router       /api/v1/tasks [get]
 func (h *TaskHandler) List(w http.ResponseWriter, r *http.Request) {
 	tasks, err := h.usecase.List(r.Context())
 	if err != nil {
@@ -134,11 +200,7 @@ func decodeJSON(r *http.Request, dst any) error {
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 
-	if err := decoder.Decode(dst); err != nil {
-		return err
-	}
-
-	return nil
+	return decoder.Decode(dst)
 }
 
 func writeUsecaseError(w http.ResponseWriter, err error) {
@@ -146,6 +208,8 @@ func writeUsecaseError(w http.ResponseWriter, err error) {
 	case errors.Is(err, taskdomain.ErrNotFound):
 		writeError(w, http.StatusNotFound, err)
 	case errors.Is(err, taskusecase.ErrInvalidInput):
+		writeError(w, http.StatusBadRequest, err)
+	case errors.Is(err, taskusecase.ErrInvalidRecurrence):
 		writeError(w, http.StatusBadRequest, err)
 	default:
 		writeError(w, http.StatusInternalServerError, err)

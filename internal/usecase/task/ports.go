@@ -26,10 +26,15 @@ type CreateInput struct {
 	Title       string
 	Description string
 	Status      taskdomain.Status
+	Recurrence  *taskdomain.RecurrenceSettings
 }
 
 type UpdateInput struct {
 	Title       string
 	Description string
 	Status      taskdomain.Status
+	// nil        — поле не передано, сохранить существующее
+	// &nil       — передан null, удалить периодичность
+	// &settings  — передано значение, заменить периодичность
+	Recurrence **taskdomain.RecurrenceSettings
 }

@@ -1,3 +1,10 @@
+// @title           Task Service API
+// @version         1.0.0
+// @description     CRUD API for tasks with recurrence support.
+
+// @host      localhost:8080
+// @BasePath  /
+
 package main
 
 import (

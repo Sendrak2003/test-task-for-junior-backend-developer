@@ -3,6 +3,7 @@ package task
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -27,21 +28,17 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*taskdomain.Ta
 		return nil, err
 	}
 
+	now := s.now()
 	model := &taskdomain.Task{
 		Title:       normalized.Title,
 		Description: normalized.Description,
 		Status:      normalized.Status,
-	}
-	now := s.now()
-	model.CreatedAt = now
-	model.UpdatedAt = now
-
-	created, err := s.repo.Create(ctx, model)
-	if err != nil {
-		return nil, err
+		Recurrence:  normalized.Recurrence,
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	}
 
-	return created, nil
+	return s.repo.Create(ctx, model)
 }
 
 func (s *Service) GetByID(ctx context.Context, id int64) (*taskdomain.Task, error) {
@@ -62,6 +59,11 @@ func (s *Service) Update(ctx context.Context, id int64, input UpdateInput) (*tas
 		return nil, err
 	}
 
+	existing, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
 	model := &taskdomain.Task{
 		ID:          id,
 		Title:       normalized.Title,
@@ -70,12 +72,19 @@ func (s *Service) Update(ctx context.Context, id int64, input UpdateInput) (*tas
 		UpdatedAt:   s.now(),
 	}
 
-	updated, err := s.repo.Update(ctx, model)
-	if err != nil {
-		return nil, err
+	switch {
+	case normalized.Recurrence == nil:
+		// поле не передано — сохраняем существующее
+		model.Recurrence = existing.Recurrence
+	case *normalized.Recurrence == nil:
+		// передан null — удаляем периодичность
+		model.Recurrence = nil
+	default:
+		// передано значение — заменяем
+		model.Recurrence = *normalized.Recurrence
 	}
 
-	return updated, nil
+	return s.repo.Update(ctx, model)
 }
 
 func (s *Service) Delete(ctx context.Context, id int64) error {
@@ -106,6 +115,12 @@ func validateCreateInput(input CreateInput) (CreateInput, error) {
 		return CreateInput{}, fmt.Errorf("%w: invalid status", ErrInvalidInput)
 	}
 
+	if err := validateRecurrence(input.Recurrence); err != nil {
+		return CreateInput{}, err
+	}
+
+	input.Recurrence = normalizeRecurrence(input.Recurrence)
+
 	return input, nil
 }
 
@@ -121,5 +136,121 @@ func validateUpdateInput(input UpdateInput) (UpdateInput, error) {
 		return UpdateInput{}, fmt.Errorf("%w: invalid status", ErrInvalidInput)
 	}
 
+	if input.Recurrence != nil && *input.Recurrence != nil {
+		if err := validateRecurrence(*input.Recurrence); err != nil {
+			return UpdateInput{}, err
+		}
+
+		normalized := normalizeRecurrence(*input.Recurrence)
+		input.Recurrence = &normalized
+	}
+
 	return input, nil
+}
+
+func validateRecurrence(r *taskdomain.RecurrenceSettings) error {
+	if r == nil {
+		return nil
+	}
+
+	if r.Type == "" {
+		return fmt.Errorf("%w: type is required", ErrInvalidRecurrence)
+	}
+
+	switch r.Type {
+	case taskdomain.RecurrenceDaily:
+		if r.DayInterval == nil || *r.DayInterval == 0 {
+			return fmt.Errorf("%w: day_interval is required for daily type", ErrInvalidRecurrence)
+		}
+
+		if *r.DayInterval < 1 || *r.DayInterval > 365 {
+			return fmt.Errorf("%w: day_interval must be between 1 and 365", ErrInvalidRecurrence)
+		}
+
+	case taskdomain.RecurrenceMonthly:
+		if len(r.MonthDays) == 0 {
+			return fmt.Errorf("%w: month_days is required for monthly type", ErrInvalidRecurrence)
+		}
+
+		for _, d := range r.MonthDays {
+			if d < 1 || d > 30 {
+				return fmt.Errorf("%w: month_days values must be between 1 and 30", ErrInvalidRecurrence)
+			}
+		}
+
+	case taskdomain.RecurrenceSpecificDates:
+		if len(r.SpecificDates) == 0 {
+			return fmt.Errorf("%w: specific_dates is required for specific_dates type", ErrInvalidRecurrence)
+		}
+
+		for _, d := range r.SpecificDates {
+			if _, err := time.Parse("2006-01-02", d); err != nil {
+				return fmt.Errorf("%w: specific_dates contains invalid date", ErrInvalidRecurrence)
+			}
+		}
+
+	case taskdomain.RecurrenceEvenOddDays:
+		if r.EvenOddType == nil {
+			return fmt.Errorf("%w: even_odd_type is required for even_odd_days type", ErrInvalidRecurrence)
+		}
+
+		if *r.EvenOddType != "even" && *r.EvenOddType != "odd" {
+			return fmt.Errorf("%w: even_odd_type must be 'even' or 'odd'", ErrInvalidRecurrence)
+		}
+
+	default:
+		return fmt.Errorf("%w: unknown recurrence type", ErrInvalidRecurrence)
+	}
+
+	return nil
+}
+
+func normalizeRecurrence(r *taskdomain.RecurrenceSettings) *taskdomain.RecurrenceSettings {
+	if r == nil {
+		return nil
+	}
+
+	result := *r
+
+	if len(r.MonthDays) > 0 {
+		result.MonthDays = deduplicateInts(r.MonthDays)
+	}
+
+	if len(r.SpecificDates) > 0 {
+		result.SpecificDates = deduplicateStrings(r.SpecificDates)
+	}
+
+	return &result
+}
+
+func deduplicateInts(s []int) []int {
+	seen := make(map[int]struct{}, len(s))
+	result := make([]int, 0, len(s))
+
+	for _, v := range s {
+		if _, ok := seen[v]; !ok {
+			seen[v] = struct{}{}
+			result = append(result, v)
+		}
+	}
+
+	sort.Ints(result)
+
+	return result
+}
+
+func deduplicateStrings(s []string) []string {
+	seen := make(map[string]struct{}, len(s))
+	result := make([]string, 0, len(s))
+
+	for _, v := range s {
+		if _, ok := seen[v]; !ok {
+			seen[v] = struct{}{}
+			result = append(result, v)
+		}
+	}
+
+	sort.Strings(result)
+
+	return result
 }
